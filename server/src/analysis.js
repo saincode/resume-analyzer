@@ -5,6 +5,28 @@ const STOPWORDS = new Set([
   "i", "me", "my", "mine", "us", "them", "but", "if", "then", "than", "so", "such"
 ]);
 
+const TECHNICAL_SKILLS = {
+  languages: [
+    "python", "java", "javascript", "typescript", "r", "sql", "scala", "c++", "c#", "go", "rust", "php", "ruby", "kotlin"
+  ],
+  frameworks: [
+    "react", "angular", "vue", "svelte", "next.js", "node.js", "express", "spring", "django", "fastapi", "flask", "nestjs",
+    "laravel", "rails", "asp.net"
+  ],
+  tools: [
+    "git", "docker", "kubernetes", "jenkins", "tableau", "power bi", "excel", "jira", "confluence", "postman", "figma"
+  ],
+  cloud: [
+    "aws", "azure", "gcp", "google cloud", "ec2", "s3", "lambda", "rds", "cloudwatch"
+  ],
+  databases: [
+    "mysql", "postgres", "postgresql", "mongodb", "cassandra", "redis", "elasticsearch", "sqlite"
+  ],
+  data: [
+    "pandas", "numpy", "scikit-learn", "tensorflow", "pytorch", "spark", "hadoop", "airflow", "kafka"
+  ]
+};
+
 function normalizeText(text) {
   return text.replace(/\s+/g, " ").trim();
 }
@@ -16,6 +38,39 @@ function tokenize(text) {
     .filter((token) => token && token.length >= 2 && !STOPWORDS.has(token));
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function matchesSkill(textLower, tokens, skill) {
+  if (skill.includes(" ")) {
+    return textLower.includes(skill);
+  }
+
+  if (/[.+#]/.test(skill)) {
+    const pattern = new RegExp(`(^|[^a-z0-9])${escapeRegExp(skill)}([^a-z0-9]|$)`);
+    return pattern.test(textLower);
+  }
+
+  return tokens.has(skill);
+}
+
+function extractTechnicalSkills(text) {
+  const textLower = normalizeText(text).toLowerCase();
+  const tokens = new Set(tokenize(textLower));
+  const found = [];
+
+  Object.values(TECHNICAL_SKILLS).forEach((skills) => {
+    skills.forEach((skill) => {
+      if (matchesSkill(textLower, tokens, skill) && !found.includes(skill)) {
+        found.push(skill);
+      }
+    });
+  });
+
+  return found;
+}
+
 function uniqueTokens(tokens) {
   return Array.from(new Set(tokens));
 }
@@ -25,13 +80,13 @@ function extractKeywords(text) {
 }
 
 function scoreMatch(resumeText, jdText) {
-  const resumeTokens = new Set(extractKeywords(resumeText));
-  const jdTokens = extractKeywords(jdText);
+  const resumeSkills = new Set(extractTechnicalSkills(resumeText));
+  const jdSkills = extractTechnicalSkills(jdText);
 
-  const matched = jdTokens.filter((token) => resumeTokens.has(token));
-  const missing = jdTokens.filter((token) => !resumeTokens.has(token));
+  const matched = jdSkills.filter((skill) => resumeSkills.has(skill));
+  const missing = jdSkills.filter((skill) => !resumeSkills.has(skill));
 
-  const denominator = Math.max(jdTokens.length, 1);
+  const denominator = Math.max(jdSkills.length, 1);
   const score = Math.min(100, Math.round((matched.length / denominator) * 100));
 
   return {
@@ -48,33 +103,29 @@ function categorizeSkills(skills) {
     frameworks: [],
     cloud: [],
     databases: [],
-    soft: [],
-    other: []
+    data: []
   };
 
-  const languageKeywords = ["python", "java", "javascript", "typescript", "r", "sql", "scala", "cpp", "csharp", "go", "rust", "php", "ruby", "kotlin"];
-  const toolKeywords = ["git", "docker", "kubernetes", "jenkins", "tableau", "power", "bi", "excel", "jira", "confluence", "postman"];
-  const frameworkKeywords = ["react", "angular", "vue", "spring", "django", "fastapi", "flask", "node", "express", "tensorflow", "pytorch"];
-  const cloudKeywords = ["aws", "azure", "gcp", "google", "cloud", "ec2", "s3", "lambda", "rds"];
-  const databaseKeywords = ["sql", "mysql", "postgres", "mongodb", "cassandra", "redis", "elasticsearch"];
-  const softKeywords = ["communication", "leadership", "teamwork", "problem", "solving", "analytical", "critical"];
+  const addCategory = (category, skill) => {
+    if (!categories[category].includes(skill)) {
+      categories[category].push(skill);
+    }
+  };
 
   skills.forEach((skill) => {
     const lower = skill.toLowerCase();
-    if (languageKeywords.some((kw) => lower.includes(kw))) {
-      categories.languages.push(skill);
-    } else if (toolKeywords.some((kw) => lower.includes(kw))) {
-      categories.tools.push(skill);
-    } else if (frameworkKeywords.some((kw) => lower.includes(kw))) {
-      categories.frameworks.push(skill);
-    } else if (cloudKeywords.some((kw) => lower.includes(kw))) {
-      categories.cloud.push(skill);
-    } else if (databaseKeywords.some((kw) => lower.includes(kw))) {
-      categories.databases.push(skill);
-    } else if (softKeywords.some((kw) => lower.includes(kw))) {
-      categories.soft.push(skill);
-    } else {
-      categories.other.push(skill);
+    if (TECHNICAL_SKILLS.languages.some((kw) => lower === kw)) {
+      addCategory("languages", skill);
+    } else if (TECHNICAL_SKILLS.tools.some((kw) => lower === kw)) {
+      addCategory("tools", skill);
+    } else if (TECHNICAL_SKILLS.frameworks.some((kw) => lower === kw)) {
+      addCategory("frameworks", skill);
+    } else if (TECHNICAL_SKILLS.cloud.some((kw) => lower === kw)) {
+      addCategory("cloud", skill);
+    } else if (TECHNICAL_SKILLS.databases.some((kw) => lower === kw)) {
+      addCategory("databases", skill);
+    } else if (TECHNICAL_SKILLS.data.some((kw) => lower === kw)) {
+      addCategory("data", skill);
     }
   });
 
@@ -131,15 +182,15 @@ function buildSuggestions(missingSkills, jdText) {
     );
   }
 
-  if (jdLower.includes("statistical") || jdLower.includes("analysis") || jdLower.includes("analytics")) {
-    suggestions.push("Highlight statistical analysis, A/B testing, or data-driven decision-making experience from past projects.");
+  if (categories.data.length > 0) {
+    const dataTools = categories.data.slice(0, 3).join(", ");
+    suggestions.push(
+      `Highlight data stack experience: ${dataTools}. Add concrete examples where you used these tools to deliver measurable results.`
+    );
   }
 
-  if (categories.other.length > 0) {
-    const sample = categories.other.slice(0, 5).join(", ");
-    suggestions.push(
-      `Address other required keywords: ${sample}. Ensure your resume directly mentions these terms in relevant sections (Skills, Experience, Projects).`
-    );
+  if (jdLower.includes("statistical") || jdLower.includes("analysis") || jdLower.includes("analytics")) {
+    suggestions.push("Highlight statistical analysis, A/B testing, or data-driven decision-making experience from past projects.");
   }
 
   suggestions.push(
